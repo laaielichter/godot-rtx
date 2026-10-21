@@ -698,6 +698,12 @@ Error ProjectSettings::_setup(const String &p_path, const String &p_main_pack, b
 			bool disable_override = GLOBAL_GET("application/config/disable_project_settings_override");
 			if (!disable_override) {
 				_load_settings_text(p_main_pack.get_base_dir().path_join("override.cfg"));
+				// godot-rtx: also read override.cfg next to the executable, so a separate RTX folder can
+				// run another game's .pck with its own settings without writing anything next to that pack.
+				const String exe_override = OS::get_singleton()->get_executable_path().get_base_dir().path_join("override.cfg");
+				if (exe_override != p_main_pack.get_base_dir().path_join("override.cfg")) {
+					_load_settings_text(exe_override);
+				}
 			}
 		}
 #endif // OVERRIDE_ENABLED
