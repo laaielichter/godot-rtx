@@ -1,0 +1,45 @@
+name: RTX drop (runtime to bin-drop branch)
+
+# Copies the runtime artifact of a finished "RTX Windows build" run to the bin-drop branch,
+# split into parts under GitHub's 100 MB file limit, so it can be fetched with plain git.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Run id of the RTX Windows build
+        required: true
+  push:
+    branches: [nvidia-pt-dlss]
+    paths: [.github/rtx-drop-run.txt]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  drop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github
+      - name: Download runtime artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN="${{ inputs.run_id }}"
+          [ -n "$RUN" ] || RUN="$(tr -d '[:space:]' < .github/rtx-drop-run.txt)"
+          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n godot-rtx-windows-runtime -D runtime
+          ls -la runtime
+          (cd runtime && zip -9 -r ../godot-rtx-runtime.zip .)
+          mkdir drop && split -b 90m -d godot-rtx-runtime.zip drop/godot-rtx-runtime.zip.part
+          (cd drop && sha256sum ../godot-rtx-runtime.zip | sed 's#\.\./##' > SHA256.txt && echo "$RUN" > RUN.txt && ls -la)
+      - name: Push to bin-drop
+        run: |
+          cd drop
+          git init -q -b bin-drop
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "RTX runtime drop"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" bin-drop
