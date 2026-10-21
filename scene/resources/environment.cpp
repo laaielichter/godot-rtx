@@ -651,13 +651,28 @@ RSE::PathtracingDenoiser Environment::get_pathtracing_denoiser() const {
 }
 
 void Environment::_update_pathtracing() {
+	bool enabled = pathtracing_enabled;
+	int samples = pathtracing_samples_per_pixel;
+	int bounces = pathtracing_max_bounces;
+	RSE::PathtracingDenoiser denoiser = pathtracing_denoiser;
+
+	// godot-rtx: lets an existing game (for example an exported .pck from an older Godot) run fully
+	// path traced without editing its scenes. Set these in override.cfg next to the executable.
+	ProjectSettings *ps = ProjectSettings::get_singleton();
+	if (ps && !Engine::get_singleton()->is_editor_hint() && bool(ps->get_setting("rendering/pathtracing/force_enabled", false))) {
+		enabled = true;
+		samples = MAX(1, int(ps->get_setting("rendering/pathtracing/force_samples_per_pixel", samples)));
+		bounces = CLAMP(int(ps->get_setting("rendering/pathtracing/force_max_bounces", bounces)), 1, 8);
+		denoiser = RSE::PathtracingDenoiser(CLAMP(int(ps->get_setting("rendering/pathtracing/force_denoiser", int(denoiser))), 0, 1));
+	}
+
 	RS::get_singleton()->environment_set_pathtracing(
 			environment,
-			pathtracing_enabled,
+			enabled,
 			(int)pathtracing_debug_mode,
-			pathtracing_samples_per_pixel,
-			pathtracing_max_bounces,
-			pathtracing_denoiser);
+			samples,
+			bounces,
+			denoiser);
 }
 
 // Glow

@@ -1,0 +1,108 @@
+name: RTX Windows build (Response Helicopter)
+
+# Builds the NVIDIA path tracing + DLSS fork as a Windows release runtime and bundles the
+# Streamline / DLSS runtime DLLs next to it. Download the "godot-rtx-windows" artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [nvidia-pt-dlss]
+    paths-ignore: ["**.md"]
+
+env:
+  PYTHONIOENCODING: utf8
+  SCONS_CACHE_MSVC_CONFIG: true
+  STREAMLINE_TAG: v2.10.3
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Runtime used to play the existing ResponseHelicopter.pck.
+          - name: runtime
+            target: template_release
+            flags: production=yes lto=full
+          # Editor, for opening the project source in the RTX fork later.
+          - name: editor
+            target: editor
+            flags: production=yes
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: rtx-${{ matrix.name }}
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Direct3D 12 SDK
+        id: d3d12
+        shell: sh
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then echo "ok=yes" >> "$GITHUB_OUTPUT"; else echo "ok=no" >> "$GITHUB_OUTPUT"; fi
+        continue-on-error: true
+
+      - name: WinRT components
+        shell: sh
+        run: python ./misc/scripts/install_winrt.py
+        continue-on-error: true
+
+      - name: Compile
+        uses: ./.github/actions/godot-build
+        with:
+          # Zen 4 (Ryzen 9 7950X3D): AVX2 code generation for the engine.
+          scons-flags: ${{ matrix.flags }} debug_symbols=no d3d12=${{ steps.d3d12.outputs.ok }} ccflags=/arch:AVX2
+          platform: windows
+          target: ${{ matrix.target }}
+
+      - name: Save build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: rtx-${{ matrix.name }}
+        continue-on-error: true
+
+      - name: Streamline and DLSS runtime DLLs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force sl | Out-Null
+          gh release download $env:STREAMLINE_TAG -R NVIDIA-RTX/Streamline -D sl
+          Get-ChildItem sl
+          Get-ChildItem sl -Filter *.zip | ForEach-Object { Expand-Archive $_.FullName -DestinationPath sl/x -Force }
+          $bin = Get-ChildItem sl/x -Recurse -Directory | Where-Object { $_.FullName -match '[\\/]bin[\\/]x64$' } | Select-Object -First 1
+          if (-not $bin) { throw "Streamline bin/x64 not found" }
+          Copy-Item "$($bin.FullName)\*.dll" bin/
+          Copy-Item "$($bin.FullName)\*.json" bin/ -ErrorAction SilentlyContinue
+          Get-ChildItem sl/x -Recurse -Include LICENSE*,*license*.txt | Select-Object -First 3 | ForEach-Object { Copy-Item $_.FullName "bin/STREAMLINE-$($_.Name)" }
+          Get-ChildItem bin
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          Remove-Item bin/build_deps -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item bin/* -Include *.exp,*.lib,*.pdb -Force
+          Copy-Item LICENSE.txt bin/GODOT-LICENSE.txt
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem bin -Filter *.console.exe | Select-Object -First 1
+          if (-not $exe) { $exe = Get-ChildItem bin -Filter godot*.exe | Select-Object -First 1 }
+          & $exe.FullName --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-rtx-windows-${{ matrix.name }}
+          path: bin/
+          retention-days: 30

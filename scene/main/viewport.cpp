@@ -5055,8 +5055,30 @@ bool Viewport::is_using_xr() const {
 }
 #endif // XR_DISABLED
 
+// godot-rtx: override.cfg can pin the 3D upscaler and its scale so an existing game's own
+// graphics menu cannot switch DLSS off. -1 means "do not force".
+static int _rtx_forced_scaling_3d_mode() {
+	ProjectSettings *ps = ProjectSettings::get_singleton();
+	if (!ps || Engine::get_singleton()->is_editor_hint()) {
+		return -1;
+	}
+	return int(ps->get_setting("rendering/scaling_3d/force_mode", -1));
+}
+
+static float _rtx_forced_scaling_3d_scale() {
+	ProjectSettings *ps = ProjectSettings::get_singleton();
+	if (!ps || Engine::get_singleton()->is_editor_hint()) {
+		return -1.0;
+	}
+	return float(ps->get_setting("rendering/scaling_3d/force_scale", -1.0));
+}
+
 void Viewport::set_scaling_3d_mode(Scaling3DMode p_scaling_3d_mode) {
 	ERR_MAIN_THREAD_GUARD;
+	const int forced_mode = _rtx_forced_scaling_3d_mode();
+	if (forced_mode >= 0 && forced_mode < SCALING_3D_MODE_MAX) {
+		p_scaling_3d_mode = Scaling3DMode(forced_mode);
+	}
 	if (scaling_3d_mode == p_scaling_3d_mode) {
 		return;
 	}
@@ -5089,6 +5111,10 @@ void Viewport::set_scaling_3d_scale(float p_scaling_3d_scale) {
 	// Clamp to reasonable values that are actually useful.
 	// Values above 2.0 don't serve a practical purpose since the viewport
 	// isn't displayed with mipmaps.
+	const float forced_scale = _rtx_forced_scaling_3d_scale();
+	if (forced_scale > 0.0) {
+		p_scaling_3d_scale = forced_scale;
+	}
 	scaling_3d_scale = CLAMP(p_scaling_3d_scale, 0.1, 2.0);
 
 	RS::get_singleton()->viewport_set_scaling_3d_scale(viewport, scaling_3d_scale);
