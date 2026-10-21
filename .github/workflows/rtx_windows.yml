@@ -60,8 +60,7 @@ jobs:
       - name: Compile
         uses: ./.github/actions/godot-build
         with:
-          # Zen 4 (Ryzen 9 7950X3D): AVX2 code generation for the engine.
-          scons-flags: ${{ matrix.flags }} debug_symbols=no d3d12=${{ steps.d3d12.outputs.ok }} ccflags=/arch:AVX2
+          scons-flags: ${{ matrix.flags }} debug_symbols=no d3d12=${{ steps.d3d12.outputs.ok }}
           platform: windows
           target: ${{ matrix.target }}
 
