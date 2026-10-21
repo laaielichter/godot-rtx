@@ -29,8 +29,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           RUN="${{ inputs.run_id }}"
-          [ -n "$RUN" ] || RUN="$(tr -d '[:space:]' < .github/rtx-drop-run.txt)"
-          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n godot-rtx-windows-runtime -D runtime
+          [ -n "$RUN" ] || RUN="$(awk '{print $1}' .github/rtx-drop-run.txt)"
+          NAME="$(awk '{print $2}' .github/rtx-drop-run.txt)"
+          [ -n "$NAME" ] || NAME=runtime
+          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n "godot-rtx-windows-$NAME" -D runtime
           ls -la runtime
           (cd runtime && zip -9 -r ../godot-rtx-runtime.zip .)
           mkdir drop && split -b 90m -d godot-rtx-runtime.zip drop/godot-rtx-runtime.zip.part

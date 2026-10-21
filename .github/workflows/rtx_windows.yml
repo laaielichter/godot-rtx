@@ -25,7 +25,7 @@ jobs:
           # Runtime used to play the existing ResponseHelicopter.pck.
           - name: runtime
             target: template_release
-            flags: production=yes lto=full
+            flags: production=yes lto=full disable_path_overrides=no
           # Editor, for opening the project source in the RTX fork later.
           - name: editor
             target: editor
